@@ -69,16 +69,28 @@ public class AIService {
                     解析：...
                     
                     【选择题2】
-                    ...
+                    题目：...
+                    A. ...
+                    B. ...
+                    C. ...
+                    D. ...
+                    答案：...
+                    解析：...
                     
                     【判断题1】
-                    ...
+                    题目：...
+                    答案：...
+                    解析：...
                     
                     【判断题2】
-                    ...
+                    题目：...
+                    答案：...
+                    解析：...
                     
                     【简答题】
-                    ...
+                    题目：...
+                    答案：...（请给出完整的答案）
+                    解析：无
                     """
             ));
             
@@ -131,7 +143,6 @@ public class AIService {
     
     private List<Question> parseAIResponseToQuestions(String aiResponse) {
         try {
-            // 解析 AI 响应
             JsonNode responseNode = objectMapper.readTree(aiResponse);
             String content = responseNode.get("choices")
                 .get(0)
@@ -139,21 +150,123 @@ public class AIService {
                 .get("content")
                 .asText();
             
-            // TODO: 实现更详细的题目解析逻辑
             List<Question> questions = new ArrayList<>();
-            Question question = Question.builder()
-                .content(content)
-                .type("AI生成题目")
-                .answer("AI生成答案")
-                .analysis("AI生成解析")
-                .difficulty(1)
-                .subject("通用")
-                .build();
-            questions.add(question);
+            String[] questionBlocks = content.split("(?=【选择题[12]】|【判断题[12]】|【简答题】)");
+            
+            int questionNumber = 1;  // 用于生成序号
+            for (String block : questionBlocks) {
+                if (block.trim().isEmpty()) continue;
+                
+                Question question = parseQuestionBlock(block.trim(), questionNumber++);
+                if (question != null) {
+                    questions.add(question);
+                }
+            }
+            
             return questions;
         } catch (Exception e) {
-//            log.error("AI响应内容: {}", aiResponse);  // 添加日志输出
             throw new RuntimeException("解析AI响应失败: " + e.getMessage());
+        }
+    }
+    
+
+    private Question parseQuestionBlock(String block, int questionNumber) {
+        try {
+            String type;
+            if (block.contains("【选择题")) {
+                type = "选择题";
+            } else if (block.contains("【判断题")) {
+                type = "判断题";
+            } else if (block.contains("【简答题】")) {
+                type = "简答题";
+            } else {
+                return null;
+            }
+            
+            String content = "";
+            String answer = "";
+            String analysis = "";
+            
+            // 分行处理
+            String[] lines = block.split("\n");
+            StringBuilder contentBuilder = new StringBuilder();
+            StringBuilder questionBuilder = new StringBuilder();
+            boolean isContent = true;  // 默认是内容
+            
+            for (String line : lines) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+                
+                if (line.startsWith("题目：")) {
+                    questionBuilder.append(line.substring(3)).append("\n");
+                } else if (line.startsWith("答案：")) {
+                    isContent = false;
+                    answer = line.substring(3).trim();
+                } else if (line.startsWith("解析：")) {
+                    isContent = false;
+                    analysis = line.substring(3).trim();
+                } else if (line.startsWith("A.") || line.startsWith("B.") || 
+                          line.startsWith("C.") || line.startsWith("D.")) {
+                    contentBuilder.append(line).append("\n");
+                } else if (line.startsWith("---") || line.startsWith("###")) {
+                    // 忽略分隔符
+                    continue;
+                } else {
+                    if (isContent) {
+                        if (line.startsWith("【")) {
+                            // 忽略题目类型标记
+                            continue;
+                        }
+                        contentBuilder.append(line).append("\n");
+                    }
+                }
+            }
+            
+            // 组合题目内容
+            if (questionBuilder.length() > 0) {
+                content = questionBuilder.toString().trim() + "\n" + contentBuilder.toString().trim();
+            } else {
+                content = contentBuilder.toString().trim();
+            }
+            
+            // 处理可能包含在content中的答案和解析
+            int answerIndex = content.indexOf("\n答案：");
+            if (answerIndex > 0) {
+                String temp = content;
+                content = temp.substring(0, answerIndex).trim();
+                
+                // 提取答案
+                if (answer.isEmpty()) {
+                    int analysisIndex = temp.indexOf("\n解析：", answerIndex);
+                    if (analysisIndex > 0) {
+                        answer = temp.substring(answerIndex + 4, analysisIndex).trim();
+                        if (type.equals("简答题")) {
+                            analysis = "无";  // 简答题固定解析为"无"
+                        } else {
+                            analysis = temp.substring(analysisIndex + 4).trim();
+                        }
+                    } else {
+                        answer = temp.substring(answerIndex + 4).trim();
+                        if (type.equals("简答题")) {
+                            analysis = "无";
+                        }
+                    }
+                }
+            }
+            
+            // 创建题目对象
+            Question question = new Question();
+            question.setType(type)
+                   .setContent(content)
+                   .setAnswer(answer)
+                   .setAnalysis(analysis);
+            
+            return question;
+            
+        } catch (Exception e) {
+            System.out.println("解析题目块失败: " + block);
+            e.printStackTrace();
+            return null;
         }
     }
     

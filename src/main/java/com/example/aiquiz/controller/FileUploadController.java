@@ -1,7 +1,9 @@
 package com.example.aiquiz.controller;
 
 import com.example.aiquiz.model.Question;
+import com.example.aiquiz.model.QuestionSet;
 import com.example.aiquiz.service.AIService;
+import com.example.aiquiz.service.QuestionSetService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +21,7 @@ import java.util.List;
 public class FileUploadController {
     
     @Autowired
-    private AIService aiService;
+    private QuestionSetService questionSetService;
     
     @PostMapping
     public ResponseEntity<?> uploadFile(
@@ -46,13 +48,27 @@ public class FileUploadController {
                 return ResponseEntity.badRequest().body("不支持的文件格式，仅支持 PDF 和 Word 文件");
             }
             
-            String prompt = String.format("请根据文件内容生成%d道题目。", questionCount);
-            List<Question> questions = aiService.generateQuestionsFromFile(file, prompt);
-            return ResponseEntity.ok(questions);
+            QuestionSet questionSet = questionSetService.createQuestionSet(file, questionCount);
+            return ResponseEntity.ok(questionSet);
             
         } catch (Exception e) {
+            System.out.println("文件处理失败");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body("文件处理失败: " + e.getMessage());
         }
+    }
+    
+    @GetMapping("/sets")
+    public ResponseEntity<List<QuestionSet>> getAllQuestionSets() {
+        return ResponseEntity.ok(questionSetService.getAllQuestionSets());
+    }
+    
+    @GetMapping("/sets/{id}")
+    public ResponseEntity<?> getQuestionSet(@PathVariable Long id) {
+        QuestionSet questionSet = questionSetService.getQuestionSet(id);
+        if (questionSet == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(questionSet);
     }
 } 

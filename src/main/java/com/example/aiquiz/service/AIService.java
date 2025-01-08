@@ -2,7 +2,8 @@ package com.example.aiquiz.service;
 
 import com.example.aiquiz.model.Question;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.XSlf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
@@ -11,20 +12,17 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
-import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import com.fasterxml.jackson.databind.JsonNode;
 
 @Service
-@Slf4j
 public class AIService {
+    private static final Logger log = LoggerFactory.getLogger(AIService.class);
     
     @Value("${ai.api.key}")
     private String apiKey;
@@ -49,9 +47,46 @@ public class AIService {
                 "role", "system",
                 "content", "fileid://" + fileId
             ));
+            
             messages.add(Map.of(
                 "role", "user",
-                "content", prompt
+                "content", """
+                    请根据文档内容生成5道题目，包括2道选择题、2道判断题和1道简答题。
+                    请严格按照以下格式输出，不要添加任何额外内容：
+                    
+                    【选择题1】
+                    题目：<在此处填写题目>
+                    A. <选项A>
+                    B. <选项B>
+                    C. <选项C>
+                    D. <选项D>
+                    答案：<A/B/C/D>
+                    解析：<解析内容>
+                    
+                    【选择题2】
+                    题目：<在此处填写题目>
+                    A. <选项A>
+                    B. <选项B>
+                    C. <选项C>
+                    D. <选项D>
+                    答案：<A/B/C/D>
+                    解析：<解析内容>
+                    
+                    【判断题1】
+                    题目：<在此处填写题目>
+                    答案：<只能填写：正确/错误>
+                    解析：<解析内容>
+                    
+                    【判断题2】
+                    题目：<在此处填写题目>
+                    答案：<只能填写：正确/错误>
+                    解析：<解析内容>
+                    
+                    【简答题】
+                    题目：<在此处填写题目>
+                    答案：<完整的答案内容>
+                    解析：无
+                    """
             ));
             
             Map<String, Object> requestBody = new HashMap<>();
@@ -68,9 +103,15 @@ public class AIService {
                 String.class
             );
             
-            return parseAIResponseToQuestions(response.getBody());
+            List<Question> questions = parseAIResponseToQuestions(response.getBody());
+            if (questions.isEmpty()) {
+                log.error("未能生成任何题目，AI响应：{}", response.getBody());
+                throw new RuntimeException("未能生成题目");
+            }
+            return questions;
             
         } catch (Exception e) {
+            log.error("AI服务调用失败", e);
             throw new RuntimeException("AI服务调用失败: " + e.getMessage());
         }
     }
@@ -103,6 +144,8 @@ public class AIService {
     
     private List<Question> parseAIResponseToQuestions(String aiResponse) {
         try {
+            log.debug("开始解析AI响应: {}", aiResponse);
+            
             JsonNode responseNode = objectMapper.readTree(aiResponse);
             String content = responseNode.get("choices")
                 .get(0)
@@ -110,122 +153,84 @@ public class AIService {
                 .get("content")
                 .asText();
             
+            log.debug("提取的内容: {}", content);
+            
             List<Question> questions = new ArrayList<>();
             String[] questionBlocks = content.split("(?=【选择题[12]】|【判断题[12]】|【简答题】)");
             
-            int questionNumber = 1;  // 用于生成序号
             for (String block : questionBlocks) {
                 if (block.trim().isEmpty()) continue;
                 
-                Question question = parseQuestionBlock(block.trim(), questionNumber++);
+                log.debug("处理题目块: {}", block);
+                Question question = parseQuestionBlock(block.trim());
                 if (question != null) {
                     questions.add(question);
+                    log.debug("成功解析题目: type={}, content={}", question.getType(), question.getContent());
+                } else {
+                    log.error("题目块解析失败: {}", block);
                 }
             }
             
             return questions;
+            
         } catch (Exception e) {
+            log.error("解析AI响应失败", e);
             throw new RuntimeException("解析AI响应失败: " + e.getMessage());
         }
     }
     
-
-    private Question parseQuestionBlock(String block, int questionNumber) {
+    private Question parseQuestionBlock(String block) {
         try {
-            String type;
-            if (block.contains("【选择题")) {
-                type = "选择题";
-            } else if (block.contains("【判断题")) {
-                type = "判断题";
-            } else if (block.contains("【简答题】")) {
-                type = "简答题";
-            } else {
-                return null;
-            }
-            
+            String[] lines = block.split("\n");
+            String type = null;
             String content = "";
             String answer = "";
             String analysis = "";
-            
-            // 分行处理
-            String[] lines = block.split("\n");
             StringBuilder contentBuilder = new StringBuilder();
-            StringBuilder questionBuilder = new StringBuilder();
-            boolean isContent = true;  // 默认是内容
             
             for (String line : lines) {
                 line = line.trim();
                 if (line.isEmpty()) continue;
                 
-                if (line.startsWith("题目：")) {
-                    questionBuilder.append(line.substring(3)).append("\n");
-                } else if (line.startsWith("答案：")) {
-                    isContent = false;
-                    answer = line.substring(3).trim();
-                } else if (line.startsWith("解析：")) {
-                    isContent = false;
-                    analysis = line.substring(3).trim();
+                if (line.contains("【选择题")) {
+                    type = "选择题";
+                } else if (line.contains("【判断题")) {
+                    type = "判断题";
+                } else if (line.contains("【简答题】")) {
+                    type = "简答题";
+                } else if (line.startsWith("题目：")) {
+                    contentBuilder.append(line.substring(3)).append("\n");
                 } else if (line.startsWith("A.") || line.startsWith("B.") || 
                           line.startsWith("C.") || line.startsWith("D.")) {
                     contentBuilder.append(line).append("\n");
-                } else if (line.startsWith("---") || line.startsWith("###")) {
-                    // 忽略分隔符
-                    continue;
-                } else {
-                    if (isContent) {
-                        if (line.startsWith("【")) {
-                            // 忽略题目类型标记
-                            continue;
-                        }
-                        contentBuilder.append(line).append("\n");
-                    }
+                } else if (line.startsWith("答案：")) {
+                    answer = line.substring(3).trim();
+                } else if (line.startsWith("解析：")) {
+                    analysis = line.substring(3).trim();
                 }
             }
             
-            // 组合题目内容
-            if (questionBuilder.length() > 0) {
-                content = questionBuilder.toString().trim() + "\n" + contentBuilder.toString().trim();
-            } else {
-                content = contentBuilder.toString().trim();
+            content = contentBuilder.toString().trim();
+            
+            if (type == null || content.isEmpty() || answer.isEmpty()) {
+                log.error("题目解析失败，缺少必要字段: type={}, content={}, answer={}", type, content, answer);
+                return null;
             }
             
-            // 处理可能包含在content中的答案和解析
-            int answerIndex = content.indexOf("\n答案：");
-            if (answerIndex > 0) {
-                String temp = content;
-                content = temp.substring(0, answerIndex).trim();
-                
-                // 提取答案
-                if (answer.isEmpty()) {
-                    int analysisIndex = temp.indexOf("\n解析：", answerIndex);
-                    if (analysisIndex > 0) {
-                        answer = temp.substring(answerIndex + 4, analysisIndex).trim();
-                        if (type.equals("简答题")) {
-                            analysis = "无";  // 简答题固定解析为"无"
-                        } else {
-                            analysis = temp.substring(analysisIndex + 4).trim();
-                        }
-                    } else {
-                        answer = temp.substring(answerIndex + 4).trim();
-                        if (type.equals("简答题")) {
-                            analysis = "无";
-                        }
-                    }
-                }
+            if (type.equals("简答题")) {
+                analysis = "无";
             }
             
-            // 创建题目对象
             Question question = new Question();
             question.setType(type)
-                   .setContent(content)
-                   .setAnswer(answer)
-                   .setAnalysis(analysis);
+                    .setContent(content)
+                    .setAnswer(answer)
+                    .setAnalysis(analysis);
             
             return question;
             
         } catch (Exception e) {
-            System.out.println("解析题目块失败: " + block);
-            e.printStackTrace();
+            log.error("解析题目块失败: {}", block, e);
             return null;
         }
     }

@@ -42,10 +42,6 @@ public class FileUploadController {
             }
             
             String fileExtension = fileName.toLowerCase();
-            if (fileExtension.endsWith(".ppt") || fileExtension.endsWith(".pptx")) {
-                return ResponseEntity.badRequest().body("暂不支持PPT格式，请上传PDF或Word文档");
-            }
-            
             if (!fileExtension.endsWith(".pdf") && 
                 !fileExtension.endsWith(".doc") && 
                 !fileExtension.endsWith(".docx")) {

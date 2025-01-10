@@ -27,6 +27,7 @@ public class FileUploadController {
     @PostMapping
     public ResponseEntity<?> uploadFile(
             @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "totalCount", required = false) Integer totalCount,
             @RequestParam(value = "choiceCount", required = false) Integer choiceCount,
             @RequestParam(value = "judgmentCount", required = false) Integer judgmentCount,
             @RequestParam(value = "shortAnswerCount", required = false) Integer shortAnswerCount) {
@@ -52,15 +53,18 @@ public class FileUploadController {
             }
             
             QuestionCountConfig config;
-            if (choiceCount == null && judgmentCount == null && shortAnswerCount == null) {
-                // 使用默认配置
-                config = QuestionCountConfig.createDefault(5);
-            } else {
-                // 使用用户指定的配置
+            if (totalCount != null) {
+                // 如果提供了总数，使用默认比例
+                config = QuestionCountConfig.createDefault(totalCount);
+            } else if (choiceCount != null || judgmentCount != null || shortAnswerCount != null) {
+                // 如果提供了任意类型的数量，使用指定的数量
                 config = new QuestionCountConfig();
                 config.setChoiceCount(choiceCount != null ? choiceCount : 0);
                 config.setJudgmentCount(judgmentCount != null ? judgmentCount : 0);
                 config.setShortAnswerCount(shortAnswerCount != null ? shortAnswerCount : 0);
+            } else {
+                // 如果什么都没提供，使用默认的5道题
+                config = QuestionCountConfig.createDefault(5);
             }
             
             QuestionSet questionSet = questionSetService.createQuestionSet(file, config);

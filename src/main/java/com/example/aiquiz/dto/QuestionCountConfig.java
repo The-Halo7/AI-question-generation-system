@@ -5,12 +5,19 @@ public class QuestionCountConfig {
     private int judgmentCount;   // 判断题数量
     private int shortAnswerCount; // 简答题数量
     
-    // 根据总数和默认比例生成配置
+    // 根据总数生成默认配置
     public static QuestionCountConfig createDefault(int totalCount) {
         QuestionCountConfig config = new QuestionCountConfig();
-        config.choiceCount = (int) Math.round(totalCount * 0.5);      // 50%
-        config.judgmentCount = (int) Math.round(totalCount * 0.3);    // 30%
-        config.shortAnswerCount = totalCount - config.choiceCount - config.judgmentCount; // 剩余部分
+        if (totalCount <= 5) {
+            config.choiceCount = 2;      // 2道选择题
+            config.judgmentCount = 2;    // 2道判断题
+            config.shortAnswerCount = 1;  // 1道简答题
+        } else {
+            // 如果总数大于5，保持相同比例
+            config.choiceCount = (int) Math.round(totalCount * 0.4);      // 40%
+            config.judgmentCount = (int) Math.round(totalCount * 0.4);    // 40%
+            config.shortAnswerCount = totalCount - config.choiceCount - config.judgmentCount; // 20%
+        }
         return config;
     }
     

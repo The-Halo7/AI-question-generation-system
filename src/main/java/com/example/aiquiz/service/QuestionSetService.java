@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.HashMap;
+import com.example.aiquiz.dto.QuestionCountConfig;
 
 @Service
 public class QuestionSetService {
@@ -75,7 +76,7 @@ public class QuestionSetService {
     }
     
     @Transactional
-    public QuestionSet createQuestionSet(MultipartFile file, int questionCount) {
+    public QuestionSet createQuestionSet(MultipartFile file, QuestionCountConfig config) {
         try {
             // 1. 从文件名生成标题
             String fileName = file.getOriginalFilename();
@@ -125,29 +126,22 @@ public class QuestionSetService {
             QuestionSet questionSet = new QuestionSet();
             questionSet.setTitle(fileName)
                       .setDescription(description)
-                      .setQuestionCount(questionCount);
+                      .setQuestionCount(config.getChoiceCount() + 
+                                       config.getJudgmentCount() + 
+                                       config.getShortAnswerCount());
             
             questionSetMapper.insert(questionSet);
             
             // 5. 生成题目
-            List<Question> questions = aiService.generateQuestionsFromFile(file, """
-                请根据文档内容生成%d道题目，包括：
-                1. 2道选择题（每题4个选项）
-                2. 2道判断题
-                3. 1道简答题
+            List<Question> questions = aiService.generateQuestionsFromFile(file, String.format("""
+                请根据文档内容生成题目，具体要求如下：
+                1. %d道选择题（每题4个选项）
+                2. %d道判断题
+                3. %d道简答题
                 
                 请按以下格式输出每道题：
                 
                 【选择题1】
-                题目：...
-                A. ...
-                B. ...
-                C. ...
-                D. ...
-                答案：...
-                解析：...
-                
-                【选择题2】
                 题目：...
                 A. ...
                 B. ...
@@ -161,16 +155,11 @@ public class QuestionSetService {
                 答案：...（只能回答：正确/错误）
                 解析：...
                 
-                【判断题2】
-                题目：...
-                答案：...（只能回答：正确/错误）
-                解析：...
-                
-                【简答题】
+                【简答题1】
                 题目：...
                 答案：...（请给出完整的答案）
                 解析：无
-                """.formatted(questionCount));
+                """, config.getChoiceCount(), config.getJudgmentCount(), config.getShortAnswerCount()));
             
             // 6. 保存题目
             int questionNumber = 1;

@@ -12,6 +12,7 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.multipart.MultipartFile;
 import lombok.extern.slf4j.Slf4j;
+import com.example.aiquiz.dto.QuestionCountConfig;
 
 import java.util.List;
 
@@ -26,7 +27,9 @@ public class FileUploadController {
     @PostMapping
     public ResponseEntity<?> uploadFile(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "questionCount", defaultValue = "5") int questionCount) {
+            @RequestParam(value = "choiceCount", required = false) Integer choiceCount,
+            @RequestParam(value = "judgmentCount", required = false) Integer judgmentCount,
+            @RequestParam(value = "shortAnswerCount", required = false) Integer shortAnswerCount) {
         try {
             if (file.isEmpty()) {
                 return ResponseEntity.badRequest().body("请选择文件");
@@ -48,11 +51,23 @@ public class FileUploadController {
                 return ResponseEntity.badRequest().body("不支持的文件格式，仅支持 PDF 和 Word 文件");
             }
             
-            QuestionSet questionSet = questionSetService.createQuestionSet(file, questionCount);
+            QuestionCountConfig config;
+            if (choiceCount == null && judgmentCount == null && shortAnswerCount == null) {
+                // 使用默认配置
+                config = QuestionCountConfig.createDefault(5);
+            } else {
+                // 使用用户指定的配置
+                config = new QuestionCountConfig();
+                config.setChoiceCount(choiceCount != null ? choiceCount : 0);
+                config.setJudgmentCount(judgmentCount != null ? judgmentCount : 0);
+                config.setShortAnswerCount(shortAnswerCount != null ? shortAnswerCount : 0);
+            }
+            
+            QuestionSet questionSet = questionSetService.createQuestionSet(file, config);
             return ResponseEntity.ok(questionSet);
             
         } catch (Exception e) {
-            System.out.println("文件处理失败");
+            log.error("文件处理失败", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body("文件处理失败: " + e.getMessage());
         }

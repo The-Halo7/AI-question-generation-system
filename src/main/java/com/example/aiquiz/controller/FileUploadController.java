@@ -6,6 +6,7 @@ import com.example.aiquiz.service.AIService;
 import com.example.aiquiz.service.QuestionSetService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -24,8 +25,9 @@ public class FileUploadController {
     @Autowired
     private QuestionSetService questionSetService;
     
-    @PostMapping
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadFile(
+            @RequestHeader("Authorization") String token,
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "totalCount", required = false) Integer totalCount,
             @RequestParam(value = "choiceCount", required = false) Integer choiceCount,
